@@ -25,23 +25,23 @@ public class InterceptorOne implements HandlerInterceptor {
     @Override
     public boolean preHandle(HttpServletRequest httpServletRequest, HttpServletResponse httpServletResponse, Object o) throws Exception {
         List<String> userList = Arrays.asList(env.getProperty("rate.limit.api.users").split(","));
-        if(httpServletRequest.getParameterMap().get("user") == null){
+        if (httpServletRequest.getParameterMap().get("user") == null) {
             httpServletResponse.getOutputStream().print("Please pass user parameter to get access to api.");
             return false;
-        } else if(!userList.contains(httpServletRequest.getParameterMap().get("user")[0])){
+        } else if (!userList.contains(httpServletRequest.getParameterMap().get("user")[0])) {
             httpServletResponse.getOutputStream().print("Unauthorized access.");
             return false;
         } else {
             String userId = httpServletRequest.getParameterMap().get("user")[0];
             String uri = httpServletRequest.getRequestURI();
             int idx = uri.lastIndexOf("/");
-            String apiKey = userId+"-"+uri.substring(idx+1);
-            Bucket bucket = hazCacheService.resolveBucket(apiKey, 1);
+            String apiKey = userId + "-" + uri.substring(idx + 1);
+            Bucket bucket = hazCacheService.resolveBucket(apiKey, Integer.parseInt(env.getProperty("default.rate.limit")));
             ConsumptionProbe consumptionProbe = bucket.tryConsumeAndReturnRemaining(1);
             if (consumptionProbe.isConsumed()) {
                 return true;
             } else {
-                httpServletResponse.getOutputStream().print("Rate limit exceeded wait for "+ (consumptionProbe.getNanosToWaitForRefill()/(1000*1000*1000))+ " seconds.");
+                httpServletResponse.getOutputStream().print("Rate limit exceeded wait for " + (consumptionProbe.getNanosToWaitForRefill() / (1000 * 1000 * 1000)) + " seconds.");
                 return false;
             }
         }

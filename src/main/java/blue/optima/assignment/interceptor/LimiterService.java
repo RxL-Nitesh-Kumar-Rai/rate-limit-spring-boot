@@ -21,11 +21,11 @@ public class LimiterService {
     private final Map<String, Bucket> cache = new ConcurrentHashMap<>();
 
     public Bucket resolveBucket(String apiKey, Integer capacity) {
-        return cache.computeIfAbsent(apiKey, (x)->newBucket(capacity));
+        return cache.computeIfAbsent(apiKey, (x) -> newBucket(capacity));
     }
 
     public Bucket updateBucket(String apiKey, Integer capacity) {
-        return cache.compute(apiKey, (x,y)->newBucket(capacity));
+        return cache.compute(apiKey, (x, y) -> newBucket(capacity));
     }
 
 
