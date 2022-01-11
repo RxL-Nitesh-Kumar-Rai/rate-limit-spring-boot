@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 
@@ -42,28 +43,35 @@ public class RateLimiterApplication implements CommandLineRunner {
             apiLimitList = Arrays.stream(limitString.split(",")).map(Integer::parseInt).collect(Collectors.toList());
         }
         String sql = "SELECT * FROM mapping_table where user_name = ? and api = ?";
+        String dbSql = "SELECT * FROM mapping_table";
         String updateSql = "INSERT into mapping_table(user_name, api, rate_limit) values(?,?,?)";
         List<Integer> finalApiLimitList = apiLimitList;
         AtomicInteger count = new AtomicInteger(0);
+        List<MappingTable> dbMappings = jdbcTemplate.query(dbSql,
+                new MappingTableRowMapper());
+        AtomicInteger idx = new AtomicInteger(0);
         userList.forEach((userName) -> {
             int currentApiLimit = apiLimit;
             if (finalApiLimitList.size() > 0) {
                 currentApiLimit = finalApiLimitList.get(count.getAndIncrement());
             }
-            int finalCurrentApiLimit = currentApiLimit;
-            apiList.forEach((api) -> {
-                List<MappingTable> mappings = jdbcTemplate.query(sql,
-                        new MappingTableRowMapper(), userName, api);
-                if (mappings.size() == 0) {
-                    jdbcTemplate.update(updateSql, userName, api, finalCurrentApiLimit);
-                    hazCacheService.resolveBucket(userName + "-" + api, finalCurrentApiLimit);
-                    System.out.println("Existing mapping username-> " + userName + " api -> " + api + " limit-> " + finalCurrentApiLimit);
-                } else {
-                    MappingTable mappingTable = mappings.get(0);
-                    hazCacheService.resolveBucket(userName + "-" + api, mappingTable.getRateLimit());
-                    System.out.println("Existing mapping username-> " + mappingTable.getUserName() + " api -> " + mappingTable.getApi() + " limit-> " + mappingTable.getRateLimit());
-                }
-            });
+            String api = apiList.get(idx.getAndIncrement());
+            dbMappings.removeIf(mappingTable -> mappingTable.getUserName().equals(userName) && mappingTable.getApi().equals(api));
+            List<MappingTable> mappings = jdbcTemplate.query(sql,
+                    new MappingTableRowMapper(), userName, api);
+            if (mappings.size() == 0) {
+                jdbcTemplate.update(updateSql, userName, api, currentApiLimit);
+                hazCacheService.resolveBucket(userName + "-" + api, currentApiLimit);
+                System.out.println("New mapping username-> " + userName + " api -> " + api + " limit-> " + currentApiLimit);
+            } else {
+                MappingTable mappingTable = mappings.get(0);
+                hazCacheService.resolveBucket(userName + "-" + api, mappingTable.getRateLimit());
+                System.out.println("Existing mapping username-> " + mappingTable.getUserName() + " api -> " + mappingTable.getApi() + " limit-> " + mappingTable.getRateLimit());
+            }
+        });
+        dbMappings.forEach((MappingTable mappingTable)->{
+            hazCacheService.resolveBucket(mappingTable.getUserName() + "-" + mappingTable.getApi(), mappingTable.getRateLimit());
+            System.out.println("Existing db mapping username-> " + mappingTable.getUserName() + " api -> " + mappingTable.getApi() + " limit-> " + mappingTable.getRateLimit());
         });
     }
 
