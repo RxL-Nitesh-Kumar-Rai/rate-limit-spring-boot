@@ -14,6 +14,7 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 
 @Component
 public class InterceptorOne implements HandlerInterceptor {
@@ -25,17 +26,19 @@ public class InterceptorOne implements HandlerInterceptor {
     @Override
     public boolean preHandle(HttpServletRequest httpServletRequest, HttpServletResponse httpServletResponse, Object o) throws Exception {
         List<String> userList = Arrays.asList(env.getProperty("rate.limit.api.users").split(","));
+        Set<String> userSet = hazCacheService.getCache().keySet();
         if (httpServletRequest.getParameterMap().get("user") == null) {
             httpServletResponse.getOutputStream().print("Please pass user parameter to get access to api.");
-            return false;
-        } else if (!userList.contains(httpServletRequest.getParameterMap().get("user")[0])) {
-            httpServletResponse.getOutputStream().print("Unauthorized access.");
             return false;
         } else {
             String userId = httpServletRequest.getParameterMap().get("user")[0];
             String uri = httpServletRequest.getRequestURI();
             int idx = uri.lastIndexOf("/");
             String apiKey = userId + "-" + uri.substring(idx + 1);
+            if (!userSet.contains(apiKey)) {
+                httpServletResponse.getOutputStream().print("Unauthorized access.");
+                return false;
+            }
             Bucket bucket = hazCacheService.resolveBucket(apiKey, Integer.parseInt(env.getProperty("default.rate.limit")));
             ConsumptionProbe consumptionProbe = bucket.tryConsumeAndReturnRemaining(1);
             if (consumptionProbe.isConsumed()) {
